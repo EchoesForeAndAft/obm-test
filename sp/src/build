@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+pushd "$(dirname "${BASH_SOURCE-$0}")" > /dev/null || exit
+source devtools/linux/env.sh
+clear
+
+export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+export CLICOLOR_FORCE=1
+export TERM=xterm-256color
+export CXXFLAGS='-w -fdiagnostics-color=always'
+
+alias gcc="gcc -fdiagnostics-color=auto"
+alias cc="gcc -fdiagnostics-color=auto"
+alias c++="gcc -fdiagnostics-color=auto"
+alias g++="gcc -fdiagnostics-color=auto"
+
+PROJECT=games
+
+make -f"$PROJECT".mak -j"$(nproc)" CFG=debug
+
+popd || exit

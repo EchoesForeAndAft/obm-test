@@ -1,0 +1,9 @@
+@version(7)
+
+@PointClass base(Targetname) studio("models/editor/axis_helper_thick.mdl") = env_rope_climbable :
+	"A climbable rope."
+[
+	RopeLength(float) : "Rope length" : 256.0
+  RopeMaterial(string) : "Rope material" : "cable/cable.vmt"
+  RopeSegments(integer) : "Rope segments" : 8
+]

@@ -15,7 +15,7 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	".\hl2;.\hl2\elements;$SRCDIR\game\shared\hl2;$SRCDIR\game\shared\episodic;..\..\public;$BASE"
-		$PreprocessorDefinitions		"$BASE;HL2_CLIENT_DLL;HL2_EPISODIC"
+		$PreprocessorDefinitions		"$BASE;HL2_CLIENT_DLL;HL2_EPISODIC;OBM_DLL"
 	}
 }
 
@@ -128,5 +128,10 @@ $Project "Client (Episodic)"
 			$File	"episodic\c_npc_puppet.cpp"
 		}
 	}
-	
+
+	$Folder	"OBM"
+	{
+		$File	"$SRCDIR\game\shared\obm\env_rope_climbable.cpp"
+		$File	"$SRCDIR\game\shared\obm\env_rope_climbable.h"
+	}
 }

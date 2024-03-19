@@ -55,6 +55,10 @@
 #include "portal_player.h"
 #endif // PORTAL
 
+#ifdef OBM_DLL
+#include "obm/env_rope_climbable.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -538,6 +542,10 @@ void CHL2_Player::HandleSpeedChanges( void )
 	}
 }
 
+#ifdef OBM_DLL
+static ConVar obm_rope_climb_speed( "obm_rope_climb_speed", "8.0" );
+#endif
+
 //-----------------------------------------------------------------------------
 // This happens when we powerdown from the mega physcannon to the regular one
 //-----------------------------------------------------------------------------
@@ -892,6 +900,33 @@ void CHL2_Player::PreThink(void)
 			m_nButtons &= ~(IN_ATTACK|IN_ATTACK2);
 		}
 	}
+
+#ifdef OBM_DLL
+	if ( IsClimbingRope() )
+	{
+		const float flMoveFactor = ( m_nButtons & IN_FORWARD ) ? 1.0f : 0.0f;
+		const float flClimbSpeed = obm_rope_climb_speed.GetFloat() * flMoveFactor;
+
+		const Vector vecViewDir = EyeDirection3D();
+		const float flViewDotUp = vecViewDir.Dot( Vector( 0, 0, 1 ) );
+		
+		if ( m_nButtons & IN_FORWARD )
+		{
+			m_nButtons &= ~IN_FORWARD;
+
+			if ( flViewDotUp > 0.25f )
+			{
+				DevMsg( "Climbing up!\n" );
+				m_RopeHangPoint = Clamp( m_RopeHangPoint - flClimbSpeed, 0.0f, m_pClimbingRope->RopeLength() );
+			}
+			else if ( flViewDotUp < -0.25f )
+			{
+				DevMsg( "Climbing down!\n" );
+				m_RopeHangPoint = Clamp( m_RopeHangPoint + flClimbSpeed, 0.0f, m_pClimbingRope->RopeLength() );
+			}
+		}
+	}
+#endif
 }
 
 void CHL2_Player::PostThink( void )
@@ -2782,6 +2817,78 @@ bool CHL2_Player::ClientCommand( const CCommand &args )
 	return BaseClass::ClientCommand( args );
 }
 
+#ifdef OBM_DLL
+CEnvRopeClimbable *CHL2_Player::FindClimbableRope()
+{
+	Vector vecPlayerEyes = EyePosition();
+	
+	CEnvRopeClimbable *pResult = nullptr;
+	Vector vecResult = vec3_origin;
+	
+	// Find which rope is closest on the XY plane.
+	for ( IEnvRopeClimbableAutoList *pItem : IEnvRopeClimbableAutoList::AutoList() )
+	{
+		CEnvRopeClimbable *pRope = static_cast<CEnvRopeClimbable *>( pItem );
+
+		if ( !pResult && pRope )
+		{
+			pResult = pRope;
+			vecResult = pResult->GetAbsOrigin();
+		}
+		else if ( pResult && pRope )
+		{
+			Vector deltaA = vecResult - vecPlayerEyes;
+			Vector deltaB = pRope->GetAbsOrigin() - vecPlayerEyes;
+
+			// Prefer whichever rope is closer on the XY plane.
+			if ( deltaB.Length2D() <= deltaA.Length2D() )
+			{
+				pResult = pRope;
+				vecResult = pResult->GetAbsOrigin();
+			}
+		}
+	}
+	
+	// Select a rope node if any is within rope use distance (CLIMBABLE_ROPE_MAX_USE_RADIUS).
+	if ( pResult && pResult->FindClosestUsableNode( vecPlayerEyes ) )
+	{
+		return pResult;
+	}
+	else
+	{
+		return nullptr;
+	}
+}
+
+void CHL2_Player::StartRopeClimb( CEnvRopeClimbable *pRope )
+{
+	CSimplePhysics::CNode *pNode = pRope->FindClosestUsableNode( EyePosition() );
+	if ( !pNode )
+		return;
+
+	m_pClimbingRope = pRope;
+	m_pClimbingRopeNode = pNode;
+	m_RopeHangPoint = Min( pNode->m_vPos.DistTo( m_pClimbingRope->GetAbsOrigin() ), m_pClimbingRope->RopeLength() );
+	
+	m_pClimbingRope->AttachPlayer( this );
+	
+	const Vector vecCenter = WorldSpaceCenter();
+	const Vector vecCenterOffset = vecCenter - GetAbsOrigin();
+	
+	SetAbsOrigin( m_pClimbingRopeNode->m_vPos - vecCenterOffset ); 
+
+	// Move player to the nearest node, and give the player a decaying eye offset
+	// from here so the camera shifts to the new position.
+}
+
+void CHL2_Player::StopRopeClimb()
+{
+	m_pClimbingRope->DetachPlayer();
+	m_pClimbingRope = nullptr;
+	m_pClimbingRopeNode = nullptr;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 // Output : void CBasePlayer::PlayerUse
@@ -2834,6 +2941,19 @@ void CHL2_Player::PlayerUse ( void )
 		// Obviously, this should be used very carefully.(sjb)
 		return;
 	}
+	
+#ifdef OBM_DLL
+	if ( IsClimbingRope() )
+	{
+		StopRopeClimb();
+		return;
+	}
+	else if ( CEnvRopeClimbable *pRope = FindClimbableRope() )
+	{
+		StartRopeClimb( pRope );
+		return;
+	}
+#endif
 
 	CBaseEntity *pUseEntity = FindUseEntity();
 

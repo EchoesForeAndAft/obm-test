@@ -77,20 +77,20 @@
 #endif
 #include "tier0/memdbgon.h"
 
-static int FastToLower( char c )
-{
-	int i = (unsigned char) c;
-	if ( i < 0x80 )
-	{
-		// Brutally fast branchless ASCII tolower():
-		i += (((('A'-1) - i) & (i - ('Z'+1))) >> 26) & 0x20;
-	}
-	else
-	{
-		i += isupper( i ) ? 0x20 : 0;
-	}
-	return i;
-}
+#define USE_FAST_CASE_CONVERSION 1
+#if USE_FAST_CASE_CONVERSION
+/// Faster conversion of an ascii char to upper case. This function does not obey locale or any language
+/// setting. It should not be used to convert characters for printing, but it is a better choice
+/// for internal strings such as used for hash table keys, etc. It's meant to be inlined and used
+/// in places like the various dictionary classes. Not obeying locale also protects you from things
+/// like your hash values being different depending on the locale setting.
+#define FastASCIIToUpper( c ) ( ( ( (c) >= 'a' ) && ( (c) <= 'z' ) ) ? ( (c) - 32 ) : (c) )
+/// similar to FastASCIIToLower
+#define FastASCIIToLower( c ) ( ( ( (c) >= 'A' ) && ( (c) <= 'Z' ) ) ? ( (c) + 32 ) : (c) )
+#else
+#define FastASCIIToLower tolower
+#define FastASCIIToUpper toupper
+#endif
 
 void _V_memset (const char* file, int line, void *dest, int fill, int count)
 {
@@ -257,6 +257,17 @@ char *V_strnlwr(char *s, size_t count)
 	return pRet;
 }
 
+static constexpr uint8 lowerAsciiLookup[128] = {
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+	0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
+	0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+	0x40, 'a',  'b',  'c',  'd',  'e',  'f',  'g',  'h',  'i',  'j',  'k',  'l',  'm',  'n',  'o',
+	'p',  'q',  'r',  's',  't',  'u',  'v',  'w',  'x',  'y',  'z',  0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+	0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
+	0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F
+};
+
 int V_stricmp( const char *str1, const char *str2 )
 {
 	// It is not uncommon to compare a string to itself. See
@@ -269,6 +280,7 @@ int V_stricmp( const char *str1, const char *str2 )
 	}
 	const unsigned char *s1 = (const unsigned char*)str1;
 	const unsigned char *s2 = (const unsigned char*)str2;
+#if 0
 	for ( ; *s1; ++s1, ++s2 )
 	{
 		if ( *s1 != *s2 )
@@ -287,6 +299,31 @@ int V_stricmp( const char *str1, const char *str2 )
 			}
 		}
 	}
+#else
+	while (true)
+	{
+		unsigned char c1 = *s1++;
+		unsigned char c2 = *s2++;
+		if (c1 == c2)
+		{
+				if ( !c1 ) return 0;
+		}
+		else if ((((uint32)c1 | (uint32)c2) & 0xffffff80) == 0)
+		{
+				if (int32 res = lowerAsciiLookup[c1] - lowerAsciiLookup[c2])
+				{
+				return res;
+				}
+		}
+		else
+		{
+			if (int32 res = tolower(c1) - tolower(c2))
+			{
+				return res;
+			}
+		}
+	}
+#endif
 	return *s2 ? -1 : 0;
 }
 
@@ -345,7 +382,7 @@ const char *StringAfterPrefix( const char *str, const char *prefix )
 		if ( !*prefix )
 			return str;
 	}
-	while ( FastToLower( *str++ ) == FastToLower( *prefix++ ) );
+	while ( tolower( *str++ ) == tolower( *prefix++ ) );
 	return NULL;
 }
 
@@ -628,7 +665,7 @@ char const* V_stristr( char const* pStr, char const* pSearch )
 	while (*pLetter != 0)
 	{
 		// Skip over non-matches
-		if (FastToLower((unsigned char)*pLetter) == FastToLower((unsigned char)*pSearch))
+		if (FastASCIIToLower((unsigned char)*pLetter) == FastASCIIToLower((unsigned char)*pSearch))
 		{
 			// Check for match
 			char const* pMatch = pLetter + 1;
@@ -639,7 +676,7 @@ char const* V_stristr( char const* pStr, char const* pSearch )
 				if (*pMatch == 0)
 					return 0;
 
-				if (FastToLower((unsigned char)*pMatch) != FastToLower((unsigned char)*pTest))
+				if (FastASCIIToLower((unsigned char)*pMatch) != FastASCIIToLower((unsigned char)*pTest))
 					break;
 
 				++pMatch;
@@ -686,7 +723,7 @@ char const* V_strnistr( char const* pStr, char const* pSearch, int n )
 			return 0;
 
 		// Skip over non-matches
-		if (FastToLower(*pLetter) == FastToLower(*pSearch))
+		if (FastASCIIToLower(*pLetter) == FastASCIIToLower(*pSearch))
 		{
 			int n1 = n - 1;
 
@@ -702,7 +739,7 @@ char const* V_strnistr( char const* pStr, char const* pSearch, int n )
 				if (*pMatch == 0)
 					return 0;
 
-				if (FastToLower(*pMatch) != FastToLower(*pTest))
+				if (FastASCIIToLower(*pMatch) != FastASCIIToLower(*pTest))
 					break;
 
 				++pMatch;
@@ -928,7 +965,7 @@ char *V_strncat(char *pDest, const char *pSrc, size_t destBufferSize, int max_ch
 	}
 	else
 	{
-		charstocopy = (size_t)min( max_chars_to_copy, (int)srclen );
+		charstocopy = (size_t)MIN( max_chars_to_copy, (int)srclen );
 	}
 
 	if ( len + charstocopy >= destBufferSize )
@@ -960,7 +997,7 @@ wchar_t *V_wcsncat( INOUT_Z_CAP(cchDest) wchar_t *pDest, const wchar_t *pSrc, si
 	}
 	else
 	{
-		charstocopy = (size_t)min( max_chars_to_copy, (int)srclen );
+		charstocopy = (size_t)MIN( max_chars_to_copy, (int)srclen );
 	}
 
 	if ( len + charstocopy >= cchDest )
@@ -1020,7 +1057,7 @@ char *V_pretifymem( float value, int digitsafterdecimal /*= 2*/, bool usebinaryo
 	char val[ 32 ];
 
 	// Clamp to >= 0
-	digitsafterdecimal = max( digitsafterdecimal, 0 );
+	digitsafterdecimal = MAX( digitsafterdecimal, 0 );
 
 	// If it's basically integral, don't do any decimals
 	if ( FloatMakePositive( value - (int)value ) < 0.00001 )
@@ -1420,7 +1457,7 @@ int V_UCS2ToUnicode( const ucs2 *pUCS2, wchar_t *pUnicode, int cubDestSizeInByte
 	size_t nMaxUTF8 = cubDestSizeInBytes;
 	char *pIn = (char *)pUCS2;
 	char *pOut = (char *)pUnicode;
-	if ( conv_t > 0 )
+	if ( uintptr_t( conv_t ) > 0 )
 	{
 		cchResult = 0;
 		cchResult = iconv( conv_t, &pIn, &nLenUnicde, &pOut, &nMaxUTF8 );
@@ -1449,7 +1486,7 @@ int V_UnicodeToUCS2( const wchar_t *pUnicode, int cubSrcInBytes, char *pUCS2, in
 #ifdef _WIN32
 	// Figure out which buffer is smaller and convert from bytes to character
 	// counts.
-	int cchResult = min( (size_t)cubSrcInBytes/sizeof(wchar_t), cubDestSizeInBytes/sizeof(wchar_t) );
+	int cchResult = MIN( (size_t)cubSrcInBytes/sizeof(wchar_t), cubDestSizeInBytes/sizeof(wchar_t) );
 	wchar_t *pDest = (wchar_t*)pUCS2;
 	wcsncpy( pDest, pUnicode, cchResult );
 	// Make sure we NULL-terminate.
@@ -1461,7 +1498,7 @@ int V_UnicodeToUCS2( const wchar_t *pUnicode, int cubSrcInBytes, char *pUCS2, in
 	size_t nMaxUCS2 = cubDestSizeInBytes;
 	char *pIn = (char*)pUnicode;
 	char *pOut = pUCS2;
-	if ( conv_t > 0 )
+	if ( uintptr_t( conv_t ) > 0 )
 	{
 		cchResult = 0;
 		cchResult = iconv( conv_t, &pIn, &nLenUnicde, &pOut, &nMaxUCS2 );
@@ -1508,7 +1545,7 @@ int V_UCS2ToUTF8( const ucs2 *pUCS2, char *pUTF8, int cubDestSizeInBytes )
 	size_t nMaxUTF8 = cubDestSizeInBytes - 1;
 	char *pIn = (char *)pUCS2;
 	char *pOut = (char *)pUTF8;
-	if ( conv_t > 0 )
+	if ( uintptr_t( conv_t ) > 0 )
 	{
 		cchResult = 0;
 		const size_t nBytesToWrite = nMaxUTF8;
@@ -1554,7 +1591,7 @@ int V_UTF8ToUCS2( const char *pUTF8, int cubSrcInBytes, ucs2 *pUCS2, int cubDest
 	size_t nMaxUTF8 = cubDestSizeInBytes;
 	char *pIn = (char *)pUTF8;
 	char *pOut = (char *)pUCS2;
-	if ( conv_t > 0 )
+	if ( uintptr_t( conv_t ) > 0 )
 	{
 		cchResult = 0;
 		cchResult = iconv( conv_t, &pIn, &nLenUnicde, &pOut, &nMaxUTF8 );
@@ -1610,7 +1647,7 @@ unsigned char V_nibble( char c )
 void V_hextobinary( char const *in, int numchars, byte *out, int maxoutputbytes )
 {
 	int len = V_strlen( in );
-	numchars = min( len, numchars );
+	numchars = MIN( len, numchars );
 	// Make sure it's even
 	numchars = ( numchars ) & ~0x1;
 
@@ -1721,7 +1758,7 @@ void V_FileBase( const char *in, char *out, int maxlen )
 	// Length of new sting
 	len = end - start + 1;
 
-	int maxcopy = min( len + 1, maxlen );
+	int maxcopy = MIN( len + 1, maxlen );
 
 	// Copy partial string
 	V_strncpy( out, &in[start], maxcopy );
@@ -1765,7 +1802,7 @@ void V_StripExtension( const char *in, char *out, int outSize )
 
 	if (end > 0 && !PATHSEPARATOR( in[end] ) && end < outSize)
 	{
-		int nChars = min( end, outSize-1 );
+		int nChars = MIN( end, outSize-1 );
 		if ( out != in )
 		{
 			memcpy( out, in, nChars );
@@ -1929,6 +1966,7 @@ bool V_StripLastDir( char *dirName, int maxlen )
 		len--;
 	}
 
+	bool bHitColon = false;
 	while ( len > 0 )
 	{
 		if ( PATHSEPARATOR( dirName[len-1] ) )
@@ -1937,7 +1975,20 @@ bool V_StripLastDir( char *dirName, int maxlen )
 			V_FixSlashes( dirName, CORRECT_PATH_SEPARATOR );
 			return true;
 		}
+		else if ( dirName[len-1] == ':' )
+		{
+			bHitColon = true;
+		}
+
 		len--;
+	}
+
+	// If we hit a drive letter, then we're done.
+	// Ex: If they passed in c:\, then V_StripLastDir should return "" and false.
+	if ( bHitColon )
+	{
+		dirName[0] = 0;
+		return false;
 	}
 
 	// Allow it to return an empty string and true. This can happen if something like "tf2/" is passed in.
@@ -2012,7 +2063,7 @@ bool V_ExtractFilePath (const char *path, char *dest, int destSize )
 		src--;
 	}
 
-	int copysize = min( src - path, destSize - 1 );
+	int copysize = MIN( src - path, destSize - 1 );
 	memcpy( dest, path, copysize );
 	dest[copysize] = 0;
 
@@ -2221,7 +2272,7 @@ bool V_MakeRelativePath( const char *pFullPath, const char *pDirectory, char *pR
 	// Strip out common parts of the path
 	const char *pLastCommonPath = NULL;
 	const char *pLastCommonDir = NULL;
-	while ( *pPath && ( FastToLower( *pPath ) == FastToLower( *pDir ) || 
+	while ( *pPath && ( tolower( *pPath ) == tolower( *pDir ) || 
 						( PATHSEPARATOR( *pPath ) && ( PATHSEPARATOR( *pDir ) || (*pDir == 0) ) ) ) )
 	{
 		if ( PATHSEPARATOR( *pPath ) )
@@ -2403,7 +2454,7 @@ char* AllocString( const char *pStr, int nMaxChars )
 	if ( nMaxChars == -1 )
 		allocLen = strlen( pStr ) + 1;
 	else
-		allocLen = min( (int)strlen(pStr), nMaxChars ) + 1;
+		allocLen = MIN( (int)strlen(pStr), nMaxChars ) + 1;
 
 	char *pOut = new char[allocLen];
 	V_strncpy( pOut, pStr, allocLen );

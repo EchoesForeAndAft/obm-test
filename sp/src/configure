@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+pushd "$(dirname "${BASH_SOURCE-$0}")" > /dev/null || exit
+source devtools/linux/env.sh
+clear
+
+GAME=episodic
+PROJECTS=(+game)
+MAKEFILE=games
+
+# Generate the makefile.
+devtools/bin/vpc /$GAME "${PROJECTS[@]}" /mksln $MAKEFILE
+
+function generate_compile_commands() {
+	make -Bnwk -no-silent -j"$(nproc)" -f$MAKEFILE.mak CFG=debug | compiledb
+	#bear -- make -f"$PROJECT".mak -j"$(nproc)" CFG=debug
+}
+
+# Generate compile commands with suppressed shell output.
+(generate_compile_commands &) &> /dev/null
+
+popd || exit

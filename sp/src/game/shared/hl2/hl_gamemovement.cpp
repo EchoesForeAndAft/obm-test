@@ -1142,6 +1142,47 @@ bool CHL2GameMovement::CanAccelerate()
 	return true;
 }
 
+#ifdef OBM_DLL
+#include "obm/env_rope_climbable.h"
+
+inline Vector ProjectOnto( const Vector &v, const Vector& onto )
+{
+	return onto * ( v.Dot(onto) / ( onto.LengthSqr() ) );
+}
+
+void CHL2GameMovement::FullTossMove()
+{
+	BaseClass::FullTossMove();
+	
+#ifdef GAME_DLL
+	CHL2_Player *pPlayer = static_cast<CHL2_Player *>( player );
+	if ( pPlayer->IsClimbingRope() )
+	{
+		CEnvRopeClimbable *pRope = pPlayer->m_pClimbingRope;
+
+		const Vector vecRopeOrigin = pRope->GetAbsOrigin();
+		const float flRopeLength = pRope->RopeLength();
+		const float flDesiredDistance = pPlayer->m_RopeHangPoint; //flRopeLength * 0.5f;
+
+		const Vector vecPlayerOrigin = mv->GetAbsOrigin();
+		const Vector vecPlayerCenter = vecPlayerOrigin + ( pPlayer->WorldSpaceCenter() - pPlayer->GetAbsOrigin());
+		
+		const Vector vecDelta = vecPlayerCenter - vecRopeOrigin;
+		const float flDistanceDelta = vecDelta.Length();
+		
+		if ( flDistanceDelta >= flDesiredDistance )
+		{
+			const Vector vecDir = vecDelta.Normalized();
+			const Vector vecTrim = vecDelta - vecDir * flDesiredDistance;
+			mv->SetAbsOrigin( vecPlayerOrigin - vecTrim );
+			
+			// Clip velocity
+			mv->m_vecVelocity -= ProjectOnto( mv->m_vecVelocity, vecDir );
+		}
+	}
+#endif
+}
+#endif
 
 #ifndef PORTAL	// Portal inherits from this but needs to declare it's own global interface
 	// Expose our interface.

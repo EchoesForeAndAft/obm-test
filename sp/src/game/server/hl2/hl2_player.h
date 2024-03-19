@@ -17,6 +17,10 @@
 
 class CAI_Squad;
 class CPropCombineBall;
+#ifdef OBM_DLL
+#include "simple_physics.h"
+class CEnvRopeClimbable;
+#endif
 
 extern int TrainSpeed(int iSpeed, int iMax);
 extern void CopyToBodyQue( CBaseAnimating *pCorpse );
@@ -280,6 +284,17 @@ public:
 
 	// HUD HINTS
 	void DisplayLadderHudHint();
+
+#ifdef OBM_DLL
+	CEnvRopeClimbable	*FindClimbableRope();
+	void				StartRopeClimb( CEnvRopeClimbable *pRope );
+	void				StopRopeClimb();
+	inline bool			IsClimbingRope() const { return m_pClimbingRope != nullptr; }
+
+	float m_RopeHangPoint = 0.0f;
+	CEnvRopeClimbable *m_pClimbingRope = nullptr;
+	CSimplePhysics::CNode *m_pClimbingRopeNode = nullptr;
+#endif
 
 	CSoundPatch *m_sndLeeches;
 	CSoundPatch *m_sndWaterSplashes;

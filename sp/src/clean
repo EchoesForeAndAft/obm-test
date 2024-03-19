@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+pushd "$(dirname "${BASH_SOURCE-$0}")" > /dev/null || exit
+source devtools/linux/env.sh
+
+PROJECT=games
+make -f"$PROJECT".mak cleanandremove
+
+find . -iname "*.P" -delete
+find . -iname "*.o" -delete
+
+popd || exit

@@ -15,7 +15,7 @@ $Configuration
 	$Compiler
 	{
 		$AdditionalIncludeDirectories	"$BASE;$SRCDIR\game\shared\hl2;$SRCDIR\game\shared\episodic;.\hl2;.\episodic"
-		$PreprocessorDefinitions		"$BASE;HL2_DLL;HL2_EPISODIC;USES_SAVERESTORE"
+		$PreprocessorDefinitions		"$BASE;HL2_DLL;HL2_EPISODIC;USES_SAVERESTORE;OBM_DLL"
 	}
 }
 
@@ -283,6 +283,11 @@ $Project "Server (Episodic)"
 			$File	"hl2\func_bulletshield.h"
 			$File	"episodic\npc_puppet.cpp"
 
+			$Folder	"OBM"
+			{
+				$File	"$SRCDIR\game\shared\obm\env_rope_climbable.cpp"
+				$File	"$SRCDIR\game\shared\obm\env_rope_climbable.h"
+			}
 
 			$Folder	"unused"
 			{

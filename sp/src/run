@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+pushd "$(dirname "${BASH_SOURCE-$0}")" > /dev/null || exit
+source devtools/linux/env.sh
+
+clear
+
+EXE=\"$GAME_DIR/hl2_linux\"
+ARGS=(-game "$MOD_DIR" -windowed -w 1920 -h 1080 -dev -vulkan "$*")
+
+echo Running command run ./hl2_linux "$EXE" "${ARGS[@]}"
+
+pushd "$GAME_DIR" > /dev/null || exit
+export LD_LIBRARY_PATH="$GAME_DIR/bin:$LD_LIBRARY_PATH"
+./hl2_linux -game "$MOD_DIR" -windowed -w 1920 -h 1080 -dev
+popd || exit
+
+popd || exit

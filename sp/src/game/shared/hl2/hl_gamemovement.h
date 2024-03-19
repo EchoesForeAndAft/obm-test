@@ -44,6 +44,10 @@ public:
 	virtual void	SetGroundEntity( trace_t *pm );
 	virtual bool CanAccelerate( void );
 
+#ifdef OBM_DLL
+	void FullTossMove() override;
+#endif
+
 private:
 
 	// See if we are pressing use near a ladder "mount" point and if so, latch us onto the ladder
